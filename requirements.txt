@@ -1,0 +1,7 @@
+﻿streamlit
+ultralytics
+pandas
+Pillow
+huggingface_hub
+PyMuPDF
+openpyxl

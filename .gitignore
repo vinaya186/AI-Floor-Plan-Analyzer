@@ -1,0 +1,6 @@
+﻿venv/
+__pycache__/
+*.pyc
+evaluation_dataset/
+room_detection_model/
+.streamlit/secrets.toml
