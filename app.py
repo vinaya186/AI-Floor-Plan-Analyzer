@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 from PIL import Image
@@ -8,6 +7,7 @@ from datetime import datetime
 from io import BytesIO
 import fitz
 import hashlib
+
 
 # ==========================================
 # 1. PAGE SETTINGS
@@ -33,13 +33,54 @@ st.write(
 
 @st.cache_resource
 def load_model():
-
     weights = hf_hub_download(
         repo_id="mudasir13cs/floorcad-yolov8n-detect",
         filename="floorcad-yolov8n-detect.pt"
     )
 
-    return YOLO(weights)
+
+    model = YOLO(weights)
+    print("MODEL LABELS:", model.names)
+    return model
+
+
+def get_class_name(model, class_id):
+    """
+    Get a readable object name from the YOLO model.
+    Unknown dataset labels are clearly marked.
+    """
+    names = model.names
+
+    if isinstance(names, dict):
+        name = names.get(class_id, f"class_{class_id}")
+    elif isinstance(names, (list, tuple)) and 0 <= class_id < len(names):
+        name = names[class_id]
+    else:
+        name = f"class_{class_id}"
+
+    name = str(name)
+
+    # Identify labels whose meanings are not documented.
+    unknown_labels = ["class_31", "class_32", "class_34", "class_35"]
+
+    if name in unknown_labels:
+        return f"Unknown object ({name})"
+
+    return name.replace("_", " ").title()
+
+    """
+    Safely get a class name from the YOLO model.
+    Some models store names as a dictionary; others use a list.
+    """
+    names = model.names
+
+    if isinstance(names, dict):
+        return str(names.get(class_id, f"class_{class_id}"))
+
+    if isinstance(names, (list, tuple)) and 0 <= class_id < len(names):
+        return str(names[class_id])
+
+    return f"class_{class_id}"
 
 
 # ==========================================
@@ -47,7 +88,6 @@ def load_model():
 # ==========================================
 
 def get_pdf_page_count(uploaded_file):
-
     pdf_document = fitz.open(
         stream=uploaded_file.getvalue(),
         filetype="pdf"
@@ -64,11 +104,9 @@ def get_pdf_page_count(uploaded_file):
 # ==========================================
 
 def convert_to_image(uploaded_file, page_number=1):
-
     file_bytes = uploaded_file.getvalue()
 
     if uploaded_file.name.lower().endswith(".pdf"):
-
         pdf_document = fitz.open(
             stream=file_bytes,
             filetype="pdf"
@@ -96,11 +134,8 @@ def convert_to_image(uploaded_file, page_number=1):
         finally:
             pdf_document.close()
 
-    else:
-
-        image = Image.open(BytesIO(file_bytes))
-
-        return image.convert("RGB")
+    image = Image.open(BytesIO(file_bytes))
+    return image.convert("RGB")
 
 
 # ==========================================
@@ -135,16 +170,14 @@ if uploaded_file is not None:
         uploaded_file.getvalue()
     ).hexdigest()
 
-    # Clear previous results when a new file is uploaded
+    # Clear previous results when a new file is uploaded.
     if current_hash != st.session_state.upload_hash:
-
         st.session_state.page_results = []
         st.session_state.source_filename = None
         st.session_state.selected_pages = []
         st.session_state.upload_hash = current_hash
 
     st.success(f"Uploaded: {uploaded_file.name}")
-
 
     # ==========================================
     # 7. SELECT PDF PAGES
@@ -155,15 +188,11 @@ if uploaded_file is not None:
     is_pdf = uploaded_file.name.lower().endswith(".pdf")
 
     if is_pdf:
-
         try:
-
             total_pages = get_pdf_page_count(uploaded_file)
 
             if total_pages == 0:
-
                 st.error("This PDF contains no pages.")
-
                 st.stop()
 
             st.info(f"Your PDF contains {total_pages} pages.")
@@ -181,22 +210,15 @@ if uploaded_file is not None:
             )
 
             # OPTION 1: ALL PAGES
-
             if selection_mode == "All pages":
-
-                selected_pages = list(
-                    range(1, total_pages + 1)
-                )
+                selected_pages = list(range(1, total_pages + 1))
 
                 st.success(
                     f"All {total_pages} pages selected."
                 )
 
-
             # OPTION 2: SPECIFIC PAGES
-
             elif selection_mode == "Specific pages":
-
                 selected_pages = st.multiselect(
                     "Choose individual pages:",
                     options=list(range(1, total_pages + 1)),
@@ -205,23 +227,18 @@ if uploaded_file is not None:
                 )
 
                 if selected_pages:
-
                     st.success(
-                        f"Selected pages: {', '.join(map(str, sorted(selected_pages)))}"
+                        f"Selected pages: "
+                        f"{', '.join(map(str, sorted(selected_pages)))}"
                     )
                 else:
-
                     st.warning("Please select at least one page.")
 
-
             # OPTION 3: PAGE RANGE
-
             elif selection_mode == "Page range":
-
                 col1, col2 = st.columns(2)
 
                 with col1:
-
                     start_page = st.number_input(
                         "Starting page",
                         min_value=1,
@@ -231,7 +248,6 @@ if uploaded_file is not None:
                     )
 
                 with col2:
-
                     end_page = st.number_input(
                         "Ending page",
                         min_value=1,
@@ -241,7 +257,6 @@ if uploaded_file is not None:
                     )
 
                 if start_page <= end_page:
-
                     selected_pages = list(
                         range(
                             int(start_page),
@@ -252,25 +267,19 @@ if uploaded_file is not None:
                     st.success(
                         f"Selected pages: {start_page} to {end_page}"
                     )
-
                 else:
-
                     st.error(
-                        "Ending page must be greater than or equal to starting page."
+                        "Ending page must be greater than or equal "
+                        "to starting page."
                     )
 
         except Exception as e:
-
             st.error(f"Unable to read PDF: {e}")
-
             st.stop()
 
     else:
-
         selected_pages = [1]
-
         st.info("Image uploaded successfully.")
-
 
     # ==========================================
     # 8. ANALYSE SELECTED PAGES
@@ -282,99 +291,74 @@ if uploaded_file is not None:
     ):
 
         if not selected_pages:
-
             st.warning("Please select at least one page.")
 
         else:
-
             try:
-
-                model = load_model()
+                with st.spinner("Loading the YOLO model..."):
+                    model = load_model()
 
                 all_page_results = []
 
                 progress = st.progress(0)
-
                 status = st.empty()
 
                 total_selected = len(selected_pages)
 
                 for index, page_number in enumerate(selected_pages):
-
                     status.write(
                         f"Analysing page {page_number} "
                         f"({index + 1}/{total_selected})..."
                     )
 
-                    # Convert selected page into image
-
+                    # Convert selected page into an image.
                     image = convert_to_image(
                         uploaded_file,
                         page_number
                     )
 
-                    # Run YOLO detection
-
+                    # Run YOLO object detection.
                     results = model.predict(
                         source=image,
-                        conf=0.25,
-                        imgsz=640
+                        conf=0.35,
+                        imgsz=640,
+                        verbose=False
                     )
 
                     result = results[0]
-
                     detected_objects = []
 
-                    # Read detected objects
+                    # Read detected objects.
+                    if result.boxes is not None:
+                        for box in result.boxes:
+                            class_id = int(box.cls[0].item())
+                            confidence = float(box.conf[0].item())
+                            object_name = get_class_name(model, class_id)
 
-                    for box in result.boxes:
+                            detected_objects.append({
+                                "Page": page_number,
+                                "Object": object_name,
+                                "Confidence": confidence * 100
+                            })
 
-                        class_id = int(box.cls[0])
-
-                        confidence = float(box.conf[0])
-
-                        object_name = model.names[class_id]
-
-                        detected_objects.append({
-
-                            "Page": page_number,
-
-                            "Object": object_name,
-
-                            "Confidence": confidence * 100
-
-                        })
-
-                    # Create page-wise quantity report
-
+                    # Create page-wise quantity report.
                     if detected_objects:
-
-                        detection_df = pd.DataFrame(
-                            detected_objects
-                        )
+                        detection_df = pd.DataFrame(detected_objects)
 
                         page_df = detection_df.groupby(
                             "Object"
                         ).agg(
-
                             Quantity=("Object", "count"),
-
                             Average_Confidence=("Confidence", "mean")
-
                         ).reset_index()
 
                         page_df["Average_Confidence"] = (
                             page_df["Average_Confidence"].round(2)
                         )
 
-                        page_df.insert(
-                            0,
-                            "Page",
-                            page_number
-                        )
+                        page_df.insert(0, "Page", page_number)
 
                     else:
-
                         page_df = pd.DataFrame(columns=[
                             "Page",
                             "Object",
@@ -382,49 +366,37 @@ if uploaded_file is not None:
                             "Average_Confidence"
                         ])
 
-                    # Create annotated image
-
+                    # Create annotated image.
                     annotated = result.plot()
 
+                    # YOLO plot output is BGR; PIL expects RGB.
                     annotated_rgb = Image.fromarray(
-                        annotated[:, :, ::-1]
+                        annotated[:, :, ::-1].copy()
                     )
 
-                    # Save page results
-
+                    # Save page results.
                     all_page_results.append({
-
                         "page_number": page_number,
-
                         "original_image": image,
-
                         "annotated_image": annotated_rgb,
-
                         "quantity_report": page_df,
-
                         "detections": detected_objects
-
                     })
 
                     progress.progress(
                         (index + 1) / total_selected
                     )
 
-                # Save all results
-
+                # Save all results in Streamlit session state.
                 st.session_state.page_results = all_page_results
-
                 st.session_state.source_filename = uploaded_file.name
-
                 st.session_state.selected_pages = selected_pages
 
-                status.success(
-                    "Analysis completed successfully!"
-                )
+                status.success("Analysis completed successfully!")
 
             except Exception as e:
-
                 st.error(f"Something went wrong: {e}")
+                st.exception(e)
 
 
 # ==========================================
@@ -439,8 +411,7 @@ if st.session_state.page_results:
 
     st.header("📊 Floor Plan Analysis Results")
 
-    # Combine all page-wise quantity reports
-
+    # Combine all page-wise quantity reports.
     page_reports = [
         result["quantity_report"]
         for result in page_results
@@ -448,14 +419,11 @@ if st.session_state.page_results:
     ]
 
     if page_reports:
-
         pagewise_df = pd.concat(
             page_reports,
             ignore_index=True
         )
-
     else:
-
         pagewise_df = pd.DataFrame(columns=[
             "Page",
             "Object",
@@ -463,40 +431,28 @@ if st.session_state.page_results:
             "Average_Confidence"
         ])
 
-    # Combine individual detections
-
+    # Combine individual detections.
     all_detections = []
 
     for result in page_results:
-
-        all_detections.extend(
-            result["detections"]
-        )
+        all_detections.extend(result["detections"])
 
     if all_detections:
-
         detailed_df = pd.DataFrame(all_detections)
-
     else:
-
         detailed_df = pd.DataFrame(columns=[
             "Page",
             "Object",
             "Confidence"
         ])
 
-    # Overall quantity report
-
+    # Overall quantity report.
     if not pagewise_df.empty:
-
         overall_df = pagewise_df.groupby(
             "Object"
         ).agg(
-
             Quantity=("Quantity", "sum"),
-
             Average_Confidence=("Average_Confidence", "mean")
-
         ).reset_index()
 
         overall_df["Average_Confidence"] = (
@@ -504,42 +460,35 @@ if st.session_state.page_results:
         )
 
     else:
-
         overall_df = pd.DataFrame(columns=[
             "Object",
             "Quantity",
             "Average_Confidence"
         ])
 
-    # Summary metrics
-
+    # Summary metrics.
     total_objects = int(overall_df["Quantity"].sum())
-
     total_categories = len(overall_df)
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
-
         st.metric(
             "Pages Analysed",
             len(page_results)
         )
 
     with col2:
-
         st.metric(
             "Total Objects Detected",
             total_objects
         )
 
     with col3:
-
         st.metric(
             "Object Categories",
             total_categories
         )
-
 
     # ==========================================
     # 10. PAGE-WISE RESULTS
@@ -550,18 +499,15 @@ if st.session_state.page_results:
     st.header("📑 Page-wise Analysis")
 
     for result in page_results:
-
         page_number = result["page_number"]
 
         with st.expander(
             f"Page {page_number} - View Analysis",
             expanded=True
         ):
-
             col1, col2 = st.columns(2)
 
             with col1:
-
                 st.subheader("Original Floor Plan")
 
                 st.image(
@@ -570,7 +516,6 @@ if st.session_state.page_results:
                 )
 
             with col2:
-
                 st.subheader("Detected Objects")
 
                 st.image(
@@ -583,7 +528,6 @@ if st.session_state.page_results:
             )
 
             if not result["quantity_report"].empty:
-
                 st.dataframe(
                     result["quantity_report"].drop(
                         columns=["Page"]
@@ -591,13 +535,8 @@ if st.session_state.page_results:
                     use_container_width=True,
                     hide_index=True
                 )
-
             else:
-
-                st.warning(
-                    "No objects detected on this page."
-                )
-
+                st.warning("No objects detected on this page.")
 
     # ==========================================
     # 11. OVERALL QUANTITY REPORT
@@ -618,7 +557,6 @@ if st.session_state.page_results:
         hide_index=True
     )
 
-
     # ==========================================
     # 12. PRELIMINARY COST ESTIMATOR
     # ==========================================
@@ -632,16 +570,18 @@ if st.session_state.page_results:
         "Estimated amount = Total quantity × Unit rate."
     )
 
+    st.warning(
+        "This is a preliminary object-based estimate only. "
+        "It is not a complete construction cost estimate. "
+        "Verify detected quantities and rates before using them."
+    )
+
     cost_data = []
 
     if not overall_df.empty:
-
         for _, row in overall_df.iterrows():
-
             object_name = row["Object"]
-
             quantity = int(row["Quantity"])
-
             confidence = float(row["Average_Confidence"])
 
             unit_rate = st.number_input(
@@ -655,19 +595,12 @@ if st.session_state.page_results:
             estimated_amount = quantity * unit_rate
 
             cost_data.append({
-
                 "Object": object_name,
-
                 "Quantity": quantity,
-
                 "Average Confidence (%)": confidence,
-
                 "Unit Rate (₹)": unit_rate,
-
                 "Estimated Amount (₹)": estimated_amount,
-
                 "Unit": "Per item"
-
             })
 
         cost_df = pd.DataFrame(cost_data)
@@ -688,7 +621,6 @@ if st.session_state.page_results:
         )
 
     else:
-
         cost_df = pd.DataFrame(columns=[
             "Object",
             "Quantity",
@@ -704,7 +636,6 @@ if st.session_state.page_results:
             "No objects were detected in the selected pages."
         )
 
-
     # ==========================================
     # 13. EXCEL REPORT GENERATION
     # ==========================================
@@ -716,49 +647,29 @@ if st.session_state.page_results:
     excel_buffer = BytesIO()
 
     summary_df = pd.DataFrame({
-
         "Project Details": [
-
             "File Name",
-
             "Selected Pages",
-
             "Analysis Date",
-
             "Total Pages Analysed",
-
             "Total Objects Detected",
-
             "Different Object Categories",
-
             "Preliminary Estimated Cost"
-
         ],
-
         "Value": [
-
             st.session_state.source_filename,
-
             ", ".join(
                 map(str, st.session_state.selected_pages)
             ),
-
             datetime.now().strftime("%d-%m-%Y %H:%M"),
-
             len(page_results),
-
             total_objects,
-
             total_categories,
-
             total_cost
-
         ]
-
     })
 
-    # Create workbook with five sheets
-
+    # Create workbook with five sheets.
     with pd.ExcelWriter(
         excel_buffer,
         engine="openpyxl"
@@ -797,15 +708,13 @@ if st.session_state.page_results:
     excel_buffer.seek(0)
 
     st.download_button(
-
         label="📊 Download Complete Excel Report",
-
-        data=excel_buffer,
-
+        data=excel_buffer.getvalue(),
         file_name="Floor_Plan_Analysis_Report.xlsx",
-
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-
+        mime=(
+            "application/vnd.openxmlformats-officedocument."
+            "spreadsheetml.sheet"
+        )
     )
 
 
